@@ -1,0 +1,138 @@
+http://leanote.com/blog/post/561658f938f41126b2000298?hmsr=toutiao.io&utm_medium=toutiao.io&utm_source=toutiao.io
+SELinux For Android, QQ群：236071361
+主页
+About Me
+归档
+标签
+
+search
+Android6.0 新特性详解
+ Android     2015-10-09 03:35:49     7052     0     2
+本文描述了Android6.0在运行时权限、存储、电源管理方面的改进，译自官方文档。
+
+目录：
+
+一 运行时权限
+受影响的权限
+请求
+权限迁移
+二 存储：
+权限
+运行时权限
+三 电源管理
+AppStandby
+生命周期
+Doze
+生命周期
+集成Doze
+豁免应用
+参考链接
+一 运行时权限
+Android6.0 引入了一个新的应用权限模型，期望对用户更容易理解，更易用和更安全。该模型将标记为危险的权限从安装时权限(Install Time Permission)模型 移动到 运行时权限模型（Runtime Permissions）:
+
+安装时权限模型(Android5.1以及更早)。用户在应用安装和更新时，对危险权限授权。但是OEM和运行商预装的应用将自动预授权。
+运行时权限(Android6.0及以后)。用户在应用运行时，对应用授予危险权限。由应用决定何时去申请权限（例如，在应用启动时或者用户访问某个特性时），但必须容许用户来授予或者拒绝应用对特定权限组的访问。OEM和运营商 可以预装应用，但是不能对权限进行预授权（例外情况请看这里Create exception）。
+运行时权限提供给用户关于应用所需权限更多的相关上下文和可视性，这也让开发者帮助用户更好的理解：为什么应用需要所请求的权限，授权将有什么样的好处，拒绝将有何种不便。用户可以通过设置中的菜单来撤销应用的权限。
+
+受影响的权限
+系统要求标记为危险（dangerous）的权限使用运行时权限模型。查看危险权限列表可以使用命令：adb shell pm list permissions -g -d。
+
+Android6.0并不改变正常权限的行为。正常权限指的是所有非危险（non-dangerous）权限，包括normal，system和signature 权限。正常权限风险较低，用于容许应用以最小风险来访问隔离的应用级别的特性。在Android5.1和早期版本中，系统在安装时自动将正常权限授予请求的应用，并不提示用户。
+
+请求
+运行时权限模型适用于所有应用，包括预装应用。应用软件的要求包括：
+
+运行时权限模型必须在所有运行Android6.0的设备上是一致的。这通过CTS来实施。
+应用必须在运行时提示用户进行授权。
+带有危险权限的预装应用，必须符合API level 23，必须维护Android6.0的AOSP权限模型（例如，应用安装的UI流程不应该脱离AOSP的packageInstaller的实现；用户可以撤销预装应用的危险权限；等等）。
+无界面的应用必须使用Activity来申请权限，或者与其他有相应权限的应用共享UID。细节请参考Headless applications。
+权限迁移
+在设备从Android5.x升级到Android6.0之后，授予应用的权限仍然有效。但是用户可以在任何时候撤销这些权限。
+
+二 存储：
+从Android6.0开始，Android支持移动存储（adoptable storage），例如SD卡或者USB。移动存储可以像内部存储一样加密和格式化，可以存储所有类型的应用数据。
+
+权限
+是否访问外部存储由各种Android权限保护。
+
+从Android1.0开始，写访问需要 WRITE_EXTERNAL_STORAGE 权限；
+从Android4.0开始，读访问需要READ_EXTERNAL_STORAGE。
+从Android4.4开始，外部存储设备上的文件，也能够基于目录结构来合成（synthesized ）不同的DAC权限（owner，group，mode）。这容许应用能够在外部存储上管理一个包相关的目录，而无需WRITE_EXTERNAL_STORAGE 。例如， 应用com.example.foo 可以自由访问外部存储上的Android/data/com.example.foo/。这种合成权限是通过fuse守护来包裹原始存储设备来完成的。
+运行时权限
+Android6.0 引入了新的运行时权限（runtime permissions）模型，用于应用在运行中必要时申请权限。由于新模型包含了READ/WRITE_EXTERNAL_STORAGE，因此平台需要在不杀死或者重启运行中的应用的前提下，动态对存储访问授权。这是通过维护所有挂载的存储设备的三个不同视图来实现的：
+
+/mnt/runtime/default 对所有的应用、root名字空间（adb 和其他系统组件）可见，而无需任何权限
+/mnt/runtime/read 对有READ_EXTERNAL_STORAGE权限的应用可见。
+/mnt/runtime/write 对有WRITE_EXTERNAL_STORAGE权限的应用可见。
+在zygote fork时，我们为每个运行中的应用创建一个mount名字空间，在其中bind mount合适的初始视图。然后，当被授予运行时权限时，vold在运行中的应用的名字空间上，通过bind mount来更新视图。注意，如果权限被撤销，将意味着该应用被kill。
+
+系统使用setns()函数来实现上述特性，这要求Linux3.8,不过Linux3.4加上补丁上也可以支持该功能。
+
+在Android6.0中，第三方应用不再被加入sdcard_r和sdcard_rw组中。相反，通过给应用挂载合适的运行时视图，实现对外部存储的访问控制。同时，使用everybodyGID来进行的跨用户交互被禁止了。
+
+三 电源管理
+Android6.0引入了下列特性来延长电池使用时间：
+
+App Standby（应用待机）。系统可以将未使用的应用置为AppStandby模式，临时限制这些应用的网络访问，延迟同步和后台job
+Doze（瞌睡）。如果用户在某个时间期限内未主动使用设备（屏幕关闭、设备静止），平台将进入深度睡眠状态。因为该特性要求平台检测静止状态，因此只有那些在Sensor HAL中实现了显式移动检测API的设备中才有效。
+Exemptions（豁免）。预装在设备上的系统应用和云消息服务，默认通常被豁免。应用开发者可以要求其应用使用这种设定。用户也可以在设置中来豁免某些应用。
+AppStandby
+对于不常用的应用的，AppStandby通过延迟后台网络活动和任务来延长电池寿命。
+
+生命周期
+
+检测：当设备不在充电时，且在某个特定时钟期限内和亮屏时长中，用户没有直接或者间接启动该应用。间接启动指的是：前台应用访问另外某个应用的service。
+
+App Standy模式中：平台限制应用一天内最多访问一次网络，延迟其同步和其他后台任务。
+
+退出：当应用被激活，或者设备充电时，平台将该应用移出App Standby状态。
+
+活动的应用不受AppStandby的影响。活动的含义是：
+
+进程处于前台（Activity 或者 前台服务，或者 由另外一个Activity 或 前台服务所使用），例如 notification listener，辅助服务，live 墙纸，等等
+供用户查看的通知，可以是锁屏通知或者通知图标。
+用户显式启动的应用。
+Doze
+支持Doze功能的要求：
+
+设备在Sensor HAL实现了significant motion detector (SMD) APIs 。
+设备有某个云消息服务，如 Google Cloud Messaging (GCM)。这使得设备可以知道何时从Doze中唤醒。
+生命周期
+
+检测：当未在充电时，且当设备静止且灭屏了一段时间。
+
+Doze期间： 平台尝试让系统处于休眠状态，周期性地进入在一个维持窗口恢复正常操作，然后进入更长的休眠状态。在休眠状态：
+
+禁止网络访问
+忽略 wakelock
+延迟闹钟，除了闹铃 和使用setAndAllowWhileIdle()设置的闹钟，以荣喜日历等应用显示事件提醒
+停止WIFI扫描
+同步和后台任务被推迟到下一个维护窗口。
+接收短信和MMS消息的应用位于一个临时白名单，这样他们可以完成其工作。
+退出：
+
+用户交互
+设备移动
+亮屏
+闹铃
+集成Doze
+
+确认设备支持 SENSOR_TYPE_SIGNIFICANT_MOTION .
+确认设备安装了一种云消息服务。？？？？
+在配置文件overlay/frameworks/base/core/res/res/values/config.xml中，修改：bool name=”config_enableAutoPowerModes”>true
+检查装应用和服务： 
+Use the new power-saving optimization guidelines. For details, see Testing and optimizing applications.
+OR，Are exempted from Doze and App Standby. For details, see Exempting applications.
+确认必要的服务从Doze中豁免。
+豁免应用
+你可以在设置中，手动将某些应用从Doze和AppStandby中排除。
+
+参考链接
+AOSP官方网站
+Power Management
+Runtime Permissions
+Storage
+友情链接
+上一篇: AOSP 镜像服务器 git service脚本
+
+下一篇: SELinux: 为binderservice编写policy
